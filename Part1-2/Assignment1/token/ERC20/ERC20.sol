@@ -44,6 +44,11 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
     string private _name;
     string private _symbol;
 
+    modifier chkAddr(address adr) {
+        require (adr != address(0));
+        _;
+    }
+
     /**
      * @dev Sets the values for {name} and {symbol}.
      *
@@ -91,14 +96,14 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * @dev See {IERC20-totalSupply}.
      */
     function totalSupply() public view virtual override returns (uint256) {
-        
+        return _totalSupply;
     }
 
     /**
      * @dev See {IERC20-balanceOf}.
      */
     function balanceOf(address account) public view virtual override returns (uint256) {
-        
+        return _balances[account];
     }
 
     /**
@@ -109,15 +114,16 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `to` cannot be the zero address.
      * - the caller must have a balance of at least `amount`.
      */
-    function transfer(address to, uint256 amount) public virtual override returns (bool) {
-        
+    function transfer(address to, uint256 amount) public virtual override chkAddr(to) returns (bool) {
+        require(_balances[_msgSender()] > amount);
+        _transfer(_msgSender(), to, amount);
     }
 
     /**
      * @dev See {IERC20-allowance}.
      */
     function allowance(address owner, address spender) public view virtual override returns (uint256) {
-        
+        return (_allowances[owner][spender]);
     }
 
     /**
@@ -130,8 +136,10 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      *
      * - `spender` cannot be the zero address.
      */
-    function approve(address spender, uint256 amount) public virtual override returns (bool) {
-        
+    function approve(address spender, uint256 amount) public virtual override chkAddr(spender) returns (bool) {
+        if (amount != 2**256 - 1) {
+            _approve(_msgSender(), spender, amount);
+        }
     }
 
     /**
@@ -150,8 +158,11 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - the caller must have allowance for ``from``'s tokens of at least
      * `amount`.
      */
-    function transferFrom(address from, address to, uint256 amount) public virtual override returns (bool) {
-        
+    function transferFrom(address from, address to, uint256 amount) public virtual override chkAddr(from) chkAddr(to) returns (bool) {
+        if (_allowances[from][to] != 2 ** 256 - 1 && _balances[from] >= amount && _allowances[from][to] >= amount) {
+            _transfer(from, to, amount);
+            _spendAllowance(from, to, amount);
+        }
     }
 
     /**
@@ -166,8 +177,8 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      *
      * - `spender` cannot be the zero address.
      */
-    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
-        
+    function increaseAllowance(address spender, uint256 addedValue) public virtual chkAddr(spender) returns (bool) {
+        _approve(_msgSender(), spender, _allowances[_msgSender()][spender] + addedValue);
     }
 
     /**
@@ -184,8 +195,9 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `spender` must have allowance for the caller of at least
      * `subtractedValue`.
      */
-    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
-        
+    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual chkAddr(spender) returns (bool) {
+        require(_allowances[_msgSender()][spender] >= subtractedValue);
+        _approve(_msgSender(), spender, _allowances[_msgSender()][spender] - subtractedValue);
     }
 
     /**
@@ -202,8 +214,15 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `to` cannot be the zero address.
      * - `from` must have a balance of at least `amount`.
      */
-    function _transfer(address from, address to, uint256 amount) internal virtual {
-        
+    function _transfer(address from, address to, uint256 amount) internal virtual chkAddr(from) chkAddr(to) {
+        require(_balances[from] >= amount);
+        if (_balances[to] + amount <= 2 ** 256 - 1) {
+            unchecked {
+                _balances[from] -= amount;
+                _balances[to] += amount;
+            }
+            emit Transfer(from, to, amount);
+        }
     }
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
@@ -215,8 +234,10 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      *
      * - `account` cannot be the zero address.
      */
-    function _mint(address account, uint256 amount) internal virtual {
-        
+    function _mint(address account, uint256 amount) internal virtual chkAddr(account) {
+        _balances[account] += amount;
+        _totalSupply += amount;
+        emit Transfer(address(0), account, amount);
     }
 
     /**
@@ -230,8 +251,11 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `account` cannot be the zero address.
      * - `account` must have at least `amount` tokens.
      */
-    function _burn(address account, uint256 amount) internal virtual {
-        
+    function _burn(address account, uint256 amount) internal virtual chkAddr(account) {
+        require(_balances[account] >= amount);
+        _balances[account] -= amount;
+        _totalSupply -= amount;
+        emit Transfer(account, address(0), amount);
     }
 
     /**
@@ -247,8 +271,9 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * - `owner` cannot be the zero address.
      * - `spender` cannot be the zero address.
      */
-    function _approve(address owner, address spender, uint256 amount) internal virtual {
-       
+    function _approve(address owner, address spender, uint256 amount) internal virtual chkAddr(owner) chkAddr(spender) {
+        _allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
     }
 
     /**
@@ -260,9 +285,11 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
      * Might emit an {Approval} event.
      */
     function _spendAllowance(address owner, address spender, uint256 amount) internal virtual {
-        
-        
+        require(_allowances[owner][spender] >= amount);
+        _transfer(owner, spender, amount);
+        _approve(owner, spender, _allowances[owner][spender] - amount);
+        emit Approval(owner, spender, _allowances[owner][spender] - amount);
     }
 
-   
+
 }
