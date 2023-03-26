@@ -1,2 +1,3 @@
-# BV_3rd_Woosung
-3rd Contract session Homeworks
+
+# This Repo stores...
+Blockchain valley 3rd contract team assignements
