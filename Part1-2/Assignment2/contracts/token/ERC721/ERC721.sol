@@ -142,7 +142,7 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      */
     function isApprovedForAll(address owner, address operator) public view virtual override returns (bool) {
         return _operatorApprovals[owner][operator];
-    }   
+    }
 
     /**
      * @dev See {IERC721-transferFrom}.
@@ -189,14 +189,18 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * Emits a {Transfer} event.
      */
     function _safeTransfer(address from, address to, uint256 tokenId, bytes memory data) internal virtual {
-        
+        if (from != address(0) && to != address(0)) {
+            if (_exists(tokenId) && _owners[tokenId] == from && _checkOnERC721Received(from, to, tokenId, data)) {
+                _transfer(from, to, tokenId);
+            }
+        }
     }
 
     /**
      * @dev Returns the owner of the `tokenId`. Does NOT revert if token doesn't exist
      */
     function _ownerOf(uint256 tokenId) internal view virtual returns (address) {
-        
+        return _owners[tokenId];
     }
 
     /**
@@ -208,7 +212,7 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * and stop existing when they are burned (`_burn`).
      */
     function _exists(uint256 tokenId) internal view virtual returns (bool) {
-        
+        return _owners[tokenId] != address(0) || _tokenApprovals[tokenId] != address(0);
     }
 
     /**
@@ -219,7 +223,7 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * - `tokenId` must exist.
      */
     function _isApprovedOrOwner(address spender, uint256 tokenId) internal view virtual returns (bool) {
-        
+        return _exists(tokenId) && (isApprovedForAll(_owners[tokenId], spender) || getApproved(tokenId) == spender);
     }
 
     /**
@@ -243,7 +247,9 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * forwarded in {IERC721Receiver-onERC721Received} to contract recipients.
      */
     function _safeMint(address to, uint256 tokenId, bytes memory data) internal virtual {
-        
+        if (_exists(tokenId) && _checkOnERC721Received(address(0), to, tokenId, data)) {
+            _mint(to, tokenId);
+        }
     }
 
     /**
@@ -259,7 +265,10 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * Emits a {Transfer} event.
      */
     function _mint(address to, uint256 tokenId) internal virtual {
-        
+        if (_exists(tokenId) && to != address(0)) {
+            _transfer(address(0), to, tokenId);
+            emit Transfer(address(0), to, tokenId);
+        }
     }
 
     /**
@@ -274,7 +283,15 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * Emits a {Transfer} event.
      */
     function _burn(uint256 tokenId) internal virtual {
-  
+        if (_exists(tokenId)) {
+            address _owner = _owners[tokenId];
+            _beforeTokenTransfer(_owner, address(0), tokenId, 2);
+            _transfer(_owner, address(0), tokenId);
+            _tokenApprovals[tokenId] = address(0);
+            _owners[tokenId] = address(0);
+            emit Transfer(_owner, address(0), tokenId);
+            _afterTokenTransfer(_owner, address(0), tokenId, 2);
+        }
     }
 
     /**
@@ -289,7 +306,14 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * Emits a {Transfer} event.
      */
     function _transfer(address from, address to, uint256 tokenId) internal virtual {
-        
+        if (to != address(0) && _owners[tokenId] == from) {
+            _beforeTokenTransfer(from, to, tokenId, 1);
+            _owners[tokenId] = to;
+            _balances[from] -= 1;
+            _balances[to] += 1;
+            emit Transfer(from, to, tokenId);
+            _afterTokenTransfer(from, to, tokenId, 1);
+        }
     }
 
     /**
@@ -298,7 +322,8 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * Emits an {Approval} event.
      */
     function _approve(address to, uint256 tokenId) internal virtual {
-       
+        _tokenApprovals[tokenId] = to;
+        emit Approval(_owners[tokenId], to, tokenId);
     }
 
     /**
@@ -307,14 +332,15 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      * Emits an {ApprovalForAll} event.
      */
     function _setApprovalForAll(address owner, address operator, bool approved) internal virtual {
-
+        _operatorApprovals[owner][operator] = approved;
+        emit ApprovalForAll(owner, operator, approved);
     }
 
     /**
      * @dev Reverts if the `tokenId` has not been minted yet.
      */
     function _requireMinted(uint256 tokenId) internal view virtual {
-        
+        require(_exists(tokenId));
     }
 
     /**
@@ -395,5 +421,7 @@ contract ERC721 is Context, ERC165, IERC721, IERC721Metadata {
      *
      * To learn more about hooks, head to xref:ROOT:extending-contracts.adoc#using-hooks[Using Hooks].
      */
-    function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal virtual {}
+    function _afterTokenTransfer(address from, address to, uint256 firstTokenId, uint256 batchSize) internal virtual {
+
+    }
 }
